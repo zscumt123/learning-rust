@@ -1,9 +1,19 @@
 [package]
-name = "demo"
+name = "my-redis"
 version = "0.1.0"
 edition = "2021"
+authors = ["zs <zscumt123@163.com>"]
+description = "study demo"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 tokio = { version = "1.25.0", features = ["full"] }
+bytes = "1"
+clap = { version = "4.1.8", features = ["derive"] }
+
+
+[[bin]]
+name = "my-redis-client"
+path = "src/bin/client.rs"
