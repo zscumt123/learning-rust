@@ -1,8 +1,11 @@
 use bytes::Bytes;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, Duration};
-use tokio::sync::{broadcast::Sender, Notify};
+use std::time::{Duration, Instant};
+use tokio::sync::{
+    broadcast::{self, Receiver, Sender},
+    Notify,
+};
 
 #[derive(Debug)]
 pub(crate) struct DbDropGuard {
@@ -59,13 +62,55 @@ impl Db {
         state.entries.get(key).map(|s| s.data.clone())
     }
 
-    pub(crate) fn set(&self,key: String, value: Bytes, expires_at: Option<Duration>)  {
-      let mut state = self.shared.state.lock().unwrap();
-      let id = state.next_id;
-      state.next_id += 1;
-      let mut notify = false;
-      
+    pub(crate) fn set(&self, key: String, value: Bytes, expires: Option<Duration>) {
+        let mut state = self.shared.state.lock().unwrap();
+        let id = state.next_id;
+        state.next_id += 1;
+        let mut notify = false;
+        let expires_at = expires.map(|duration| {
+            let when = Instant::now() + duration;
 
+            // TODO:不懂
+            notify = state
+                .next_expiration()
+                .map(|exp| exp > when)
+                .unwrap_or(true);
+            state.expirations.insert((when, id), key.clone());
+            when
+        });
+        let prev = state.entries.insert(
+            key,
+            Entry {
+                id,
+                data: value,
+                expires_at,
+            },
+        );
+        if let Some(prev) = prev {
+            if let Some(s) = prev.expires_at {
+                //删除重复的
+                state.expirations.remove(&(s, prev.id));
+            }
+        }
+        drop(state);
+        if notify {
+            // TODO: 通知
+            todo!()
+        }
+    }
+
+    pub(crate) fn subscribe(&self, key: String) -> Receiver<Bytes> {
+        use std::collections::hash_map::Entry;
+        let mut state = self.shared.state.lock().unwrap();
+
+        match state.pub_sub.entry(key) {
+            Entry::Occupied(o) => o.get().subscribe(),
+            Entry::Vacant(v) => {
+                let (tx, rx) = broadcast::channel(1024);
+                v.insert(tx);
+                rx
+            }
+        }
     }
 }
 
