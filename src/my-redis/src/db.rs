@@ -1,15 +1,30 @@
 use bytes::Bytes;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use tokio::time::{self,Duration, Instant};
 use tokio::sync::{
     broadcast::{self, Receiver, Sender},
     Notify,
 };
+use tracing::debug;
 
 #[derive(Debug)]
 pub(crate) struct DbDropGuard {
     db: Db,
+}
+
+impl DbDropGuard {
+    fn new () -> Self {
+        Self { db: Db::new() }
+    }
+    pub(crate) fn db(&self) -> Db {
+        self.db.clone()
+    }
+}
+impl Drop for DbDropGuard {
+    fn drop(&mut self) {
+        self.db.shutdown_purge_task();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -54,7 +69,8 @@ impl Db {
             }),
             background_task: Notify::new(),
         });
-        //这里需要启动一个后台任务 TODO:
+        //这里需要启动一个后台任务 
+        tokio::spawn(purge_expired_tasks(shared.clone()));
         Self { shared }
     }
     pub(crate) fn get(&self, key: &str) -> Option<Bytes> {
@@ -94,8 +110,7 @@ impl Db {
         }
         drop(state);
         if notify {
-            // TODO: 通知
-            todo!()
+            self.shared.background_task.notify_one();
         }
     }
 
@@ -112,6 +127,43 @@ impl Db {
             }
         }
     }
+    pub(crate) fn publish(&self, key: &str, value: Bytes) -> usize {
+        let state = self.shared.state.lock().unwrap();
+        state
+            .pub_sub
+            .get(key)
+            .map(|s| s.send(value).unwrap_or(0))
+            .unwrap_or(0)
+    }
+    fn shutdown_purge_task(&self) {
+        let mut state = self.shared.state.lock().unwrap();
+        state.shutdown = true;
+        drop(state);
+        self.shared.background_task.notify_one();
+    }
+}
+
+impl Shared {
+    fn purge_expired_keys(&self) -> Option<Instant> {
+        let mut state = self.state.lock().unwrap();
+        if state.shutdown {
+            return None;
+        }
+        let state = &mut *state;
+        let now = Instant::now();
+        while let Some((&(when,id),key)) = state.expirations.iter().next() {
+            if when > now {
+                return Some(when)
+            }
+            state.entries.remove(key);
+            state.expirations.remove(&(when, id ));
+        }
+        None
+
+    }
+    fn is_shutdown(&self) -> bool {
+        self.state.lock().unwrap().shutdown
+    }
 }
 
 impl State {
@@ -119,3 +171,18 @@ impl State {
         self.expirations.keys().next().map(|s| s.0)
     }
 }
+
+
+async fn purge_expired_tasks(shared: Arc<Shared>) {
+    while !shared.is_shutdown() {
+        if let Some(when) = shared.purge_expired_keys() {
+            tokio::select! {
+                _ = time::sleep_until(when) => {}
+                _ = shared.background_task.notified() => {}
+            }
+        } else {
+            shared.background_task.notified().await;
+        }
+    }
+    debug!("Purge background task shut down");
+}   

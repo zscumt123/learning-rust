@@ -12,8 +12,8 @@ description = "study demo"
 tokio = { version = "1.25.0", features = ["full"] }
 bytes = "1"
 clap = { version = "4.1.8", features = ["derive"] }
-
-
+tracing = "0.1.34"
+atoi = "2.0.0"
 [[bin]]
 name = "my-redis-client"
 path = "src/bin/client.rs"
