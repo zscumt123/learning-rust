@@ -1,0 +1,23 @@
+[package]
+name = "kv"
+version = "0.1.0"
+edition = "2021"
+authors = ['zs']
+description = "kv-server"
+
+
+[dependencies]
+tracing = "0.1.37"
+prost = "0.9"
+bytes = "1.4.0"
+thiserror = "1.0.40"
+dashmap = "5.4.0"
+
+[dev-dependencies]
+anyhow = "1.0.70"
+futures = "0.3.28"
+tokio = { version = "1.27.0", features = ["full"] }
+async-prost = "0.3"
+tracing-subscriber = "0.3.16"
+[build-dependencies]
+prost-build = "0.9" # 编译 protobuf
