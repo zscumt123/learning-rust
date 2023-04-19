@@ -6,7 +6,6 @@ use std::num::ParseIntError;
 fn main() {
     let cli = Cli::parse();
     println!("cli, {:?}",cli);
-
     let addr = format!("{}:{}",cli.host, cli.port);
     println!("addr:{}",addr);
     
