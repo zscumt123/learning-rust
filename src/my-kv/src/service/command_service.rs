@@ -44,6 +44,23 @@ impl CommandService for Hmget {
         res.into()
     }
 }
+impl CommandService for Hexist {
+    fn execute(self, store: &impl Storage) -> CommandResponse {
+        match store.contains(&self.table, &self.key) {
+            Ok(s) => s.into(),
+            Err(e) => e.into(),
+        }
+    }
+}
+impl CommandService for Hdel {
+    fn execute(self, store: &impl Storage) -> CommandResponse {
+        match store.del(&self.table, &self.key) {
+            Ok(Some(s)) => s.into(),
+            Ok(None) => KvError::NotFound(self.table, self.key).into(),
+            Err(e) => e.into(),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -82,6 +99,27 @@ mod tests {
         assert_res_ok(res, &[10.into(), 11.into(), 12.into()], &[])
     }
     #[test]
+    fn hexits_should_work() {
+        let store = MemTable::new();
+        let cmd = CommandRequest::new_hset("score", "u1", 10.into());
+        dispatch(cmd, &store);
+        let cmd = CommandRequest::new_hexist("score", "u1");
+        let res = dispatch(cmd, &store);
+        assert_res_ok(res, &[], &[])
+    }
+    #[test]
+    fn hdel_should_work() {
+        let store = MemTable::new();
+        let cmd = CommandRequest::new_hset("score", "u1", 10.into());
+        dispatch(cmd, &store);
+        let cmd = CommandRequest::new_hdel("score", "u1");
+        let res = dispatch(cmd, &store);
+        assert_res_ok(res.clone(), &[10.into()], &[]);
+        let cmd = CommandRequest::new_hdel("score", "u2");
+        let res = dispatch(cmd, &store);
+        assert_res_error(res, 404, "Not found")
+    }
+    #[test]
     fn hget_with_non_exist_key_should_return_404() {
         let store = MemTable::new();
         let cmd = CommandRequest::new_hget("score", "u1");
@@ -117,6 +155,8 @@ mod tests {
             RequestData::Hgetall(v) => v.execute(store),
             RequestData::Hset(v) => v.execute(store),
             RequestData::Hmget(v) => v.execute(store),
+            RequestData::Hexist(v) => v.execute(store),
+            RequestData::Hdel(v) => v.execute(store),
             _ => todo!(),
         }
     }

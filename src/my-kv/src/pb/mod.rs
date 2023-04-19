@@ -41,6 +41,24 @@ impl CommandRequest {
             request_data: Some(RequestData::Hmget(m_hmget)),
         }
     }
+    pub fn new_hexist(table: impl Into<String>, key: impl Into<String>) -> Self {
+        let h_exist = Hexist {
+            table: table.into(),
+            key: key.into(),
+        };
+        Self {
+            request_data: Some(RequestData::Hexist(h_exist)),
+        }
+    }
+    pub fn new_hdel(table: impl Into<String>, key: impl Into<String>) -> Self {
+        let s = Hdel {
+            table: table.into(),
+            key: key.into(),
+        };
+        Self {
+            request_data: Some(RequestData::Hdel(s)),
+        }
+    }
 }
 
 impl Kvpair {
@@ -72,6 +90,18 @@ impl From<i64> for Value {
         Self {
             value: Some(value::Value::Integer(v)),
         }
+    }
+}
+impl From<bool> for CommandResponse {
+    fn from(v: bool) -> Self {
+        let mut res = Self {
+            status: StatusCode::OK.as_u16() as _,
+            ..Default::default()
+        };
+        if !v {
+            res.status = StatusCode::NOT_FOUND.as_u16() as _;
+        }
+        res
     }
 }
 
