@@ -1,0 +1,4 @@
+hello,typesscript hello
+world hello
+set
+get
