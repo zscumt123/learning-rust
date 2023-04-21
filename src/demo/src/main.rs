@@ -1,14 +1,9 @@
-use std::collections::HashMap;
-
-
-
-
-
-fn main(){
-    let mut letters = HashMap::new();
-    for ch in "acdddeaaaddawttw".chars() {
-        let le = letters.entry(ch).or_insert(0);
-        *le += 1;
-    }
-
+use std::process::Command;
+fn main() {
+    let out = Command::new("sh")
+        .arg("-c")
+        .arg("echo $ABC $DEF")
+        .envs([("ABC", "aaa"), ("DEF", "ddd")])
+        .status();
+    println!("{:?}", out)
 }
