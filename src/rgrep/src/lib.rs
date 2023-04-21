@@ -6,7 +6,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use regex::Regex;
 use std::{
     fs::File,
-    io::{self, BufRead, BufReader, Read, Stdout, Write},
+    io::{self, BufRead, BufReader, Write},
     ops::Range,
     path::Path,
 };
@@ -14,7 +14,8 @@ use std::{
 mod error;
 pub use error::GrepError;
 
-pub type StrategyFn<W, R> = fn(&Path, BufReader<R>, &Regex, &mut W) -> Result<(), GrepError>;
+pub type StrategyFn = fn(&Path, &mut dyn BufRead, &Regex, &mut dyn Write) -> Result<(), GrepError>;
+// pub type StrategyFn<W, R> = fn(&Path, BufReader<R>, &Regex, &mut W) -> Result<(), GrepError>;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -27,15 +28,15 @@ impl GrepConfig {
     pub fn match_with_default_strategy(&self) -> Result<(), GrepError> {
         self.match_with(default_strategy)
     }
-    pub fn match_with(&self, strategy: StrategyFn<Stdout, File>) -> Result<(), GrepError> {
+    pub fn match_with(&self, strategy: StrategyFn) -> Result<(), GrepError> {
         let regex = Regex::new(&self.pattern)?;
         let files: Vec<_> = glob(&self.glob)?.collect();
         files.into_par_iter().for_each(|v| {
             if let Ok(filename) = v {
                 if let Ok(file) = File::open(&filename) {
-                    let reader = BufReader::new(file);
+                    let mut reader = BufReader::new(file);
                     let mut stdout = io::stdout();
-                    if let Err(e) = strategy(filename.as_path(), reader, &regex, &mut stdout) {
+                    if let Err(e) = strategy(filename.as_path(), &mut reader, &regex, &mut stdout) {
                         println!("Internal error: {:?}", e);
                     }
                 }
@@ -45,11 +46,11 @@ impl GrepConfig {
     }
 }
 
-pub fn default_strategy<W: Write, R: Read>(
+pub fn default_strategy(
     path: &Path,
-    reader: BufReader<R>,
+    reader: &mut dyn BufRead,
     parttern: &Regex,
-    writer: &mut W,
+    writer: &mut dyn Write,
 ) -> Result<(), GrepError> {
     let matches = reader
         .lines()
@@ -110,10 +111,10 @@ mod tests {
     fn default_strategy_should_work() {
         let path = Path::new("src/main.rs");
         let input = b"hello world!\nhey Tyr!";
-        let reader = BufReader::new(&input[..]);
+        let mut reader = BufReader::new(&input[..]);
         let pattern = Regex::new(r"he\\w+").unwrap();
         let mut writer = Vec::new();
-        default_strategy(path, reader, &pattern, &mut writer).unwrap();
+        default_strategy(path, &mut reader, &pattern, &mut writer).unwrap();
         let result = String::from_utf8(writer).unwrap();
         let expected = [
             String::from("src/main.rs"),
