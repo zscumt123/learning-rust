@@ -13,6 +13,8 @@ pub enum KvError {
     #[error("Cannot process command {0} with table: {1}, key: {2}. Error: {3}")]
     StorageError(&'static str, String, String, String),
 
+    #[error("sled error")]
+    SledError(#[from] sled::Error),
     #[error("Failed to encode protobuf message")]
     EncodeError(#[from] prost::EncodeError),
     #[error("Failed to decode protobuf message")]

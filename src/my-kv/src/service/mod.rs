@@ -9,6 +9,27 @@ pub trait CommandService {
     fn execute(self, store: &impl Storage) -> CommandResponse;
 }
 
+pub trait Notify<Arg> {
+    fn notify(&self, arg: &Arg);
+}
+pub trait NotifyMut<Arg> {
+    fn notify(&self, arg: &mut Arg);
+}
+impl<Arg> Notify<Arg> for Vec<fn(&Arg)> {
+    fn notify(&self, arg: &Arg) {
+        for cb in self {
+            cb(arg)
+        }
+    }
+}
+impl<Arg> NotifyMut<Arg> for Vec<fn(&mut Arg)> {
+    fn notify(&self, arg: &mut Arg) {
+        for cb in self {
+            cb(arg)
+        }
+    }
+}
+
 pub struct Service<Store = MemTable> {
     inner: Arc<ServiceInner<Store>>,
 }
@@ -22,19 +43,58 @@ impl<Store> Clone for Service<Store> {
 
 pub struct ServiceInner<Store> {
     store: Store,
+    on_received: Vec<fn(&CommandRequest)>,
+    on_executed: Vec<fn(&CommandResponse)>,
+    on_before_send: Vec<fn(&mut CommandResponse)>,
+    on_after_send: Vec<fn()>,
+}
+impl<Store: Storage> ServiceInner<Store> {
+    pub fn new(store: Store) -> Self {
+        Self {
+            store,
+            on_received: vec![],
+            on_executed: vec![],
+            on_before_send: vec![],
+            on_after_send: vec![],
+        }
+    }
+    pub fn fn_received(mut self, cb: fn(&CommandRequest)) -> Self {
+        self.on_received.push(cb);
+        self
+    }
+    pub fn fn_executed(mut self, cb: fn(&CommandResponse)) -> Self {
+        self.on_executed.push(cb);
+        self
+    }
+    pub fn fn_before_send(mut self, cb: fn(&mut CommandResponse)) -> Self {
+        self.on_before_send.push(cb);
+        self
+    }
+    pub fn fn_after_send(mut self, cb: fn()) -> Self {
+        self.on_after_send.push(cb);
+        self
+    }
 }
 
 impl<Store: Storage> Service<Store> {
-    pub fn new(store: Store) -> Self {
-        Self {
-            inner: Arc::new(ServiceInner { store }),
-        }
-    }
     pub fn execute(&self, cmd: CommandRequest) -> CommandResponse {
         debug!("Got Request:{:?}", cmd);
-        let res = dispatch(cmd, &self.inner.store);
+        self.inner.on_received.notify(&cmd);
+        let mut res = dispatch(cmd, &self.inner.store);
         debug!("Execute Response,{:?}", res);
+        self.inner.on_executed.notify(&res);
+        self.inner.on_before_send.notify(&mut res);
+        if !self.inner.on_before_send.is_empty() {
+            debug!("Modified response: {:?}", res);
+        }
         res
+    }
+}
+impl<Store> From<ServiceInner<Store>> for Service<Store> {
+    fn from(inner: ServiceInner<Store>) -> Self {
+        Self {
+            inner: Arc::new(inner),
+        }
     }
 }
 
@@ -52,13 +112,43 @@ pub fn dispatch(cmd: CommandRequest, store: &impl Storage) -> CommandResponse {
 mod tests {
     use std::thread;
 
+    use http::StatusCode;
+    use tracing::info;
+
     use super::*;
     use crate::{MemTable, Value};
 
     #[test]
+    fn event_registration_should_work() {
+        fn b(cmd: &CommandRequest) {
+            info!("Got:{:?}", cmd);
+        }
+        fn c(res: &CommandResponse) {
+            info!("RES:{:?}", res);
+        }
+        fn d(req: &mut CommandResponse) {
+            req.status = StatusCode::CREATED.as_u16() as _;
+        }
+        fn e() {
+            info!("data is send")
+        }
+        let service: Service = ServiceInner::new(MemTable::default())
+            .fn_received(|_: &CommandRequest| {})
+            .fn_received(b)
+            .fn_executed(c)
+            .fn_before_send(d)
+            .fn_after_send(e)
+            .into();
+        let res = service.execute(CommandRequest::new_hset("t1", "k1", "v1".into()));
+        assert_eq!(res.status, StatusCode::CREATED.as_u16() as _);
+        assert_eq!(res.message, "");
+        assert_eq!(res.values, vec![Value::default()]);
+    }
+
+    #[test]
     fn service_should_works() {
         // 我们需要一个 service 结构至少包含 Storage
-        let service = Service::new(MemTable::default());
+        let service: Service = ServiceInner::new(MemTable::default()).into();
 
         // service 可以运行在多线程环境下，它的 clone 应该是轻量级的
         let cloned = service.clone();
