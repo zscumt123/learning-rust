@@ -6,6 +6,15 @@ authors = ['zs']
 description = "kv-server"
 
 
+[[bin]]
+name = "kvs"
+path = "src/server.rs"
+
+[[bin]]
+name = "kvc"
+path = "src/client.rs"
+
+
 [dependencies]
 tracing = "0.1.37"
 prost = "0.9"
@@ -14,14 +23,20 @@ thiserror = "1.0.40"
 dashmap = "5.4.0"
 http = "0.2.9"
 sled = "0.34.7"
-
-[dev-dependencies]
-anyhow = "1.0.70"
-futures = "0.3.28"
 tokio = { version = "1.27.0", features = ["full"] }
-async-prost = "0.3"
+flate2 = "1.0.26"
+anyhow = "1.0.70"
 tracing-subscriber = "0.3.16"
+tokio-rustls = "0.22"
+rustls-native-certs = "0.5"
+futures = "0.3.28"
+[dev-dependencies]
+
+futures = "0.3.28"
+async-prost = "0.3"
+
 tempfile = "3.5.0"
 tokio-util = { version = "0.7.7", features = ["codec"] }
+certify = "0.3"
 [build-dependencies]
 prost-build = "0.9" # 编译 protobuf

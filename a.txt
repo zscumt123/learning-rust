@@ -2,3 +2,4 @@ hello,typesscript hello
 world hello
 set
 get
+*.mp3

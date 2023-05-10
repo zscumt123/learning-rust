@@ -1,7 +1,7 @@
 use crate::Value;
 use thiserror::Error;
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug)]
 pub enum KvError {
     #[error("Not found for table: {0}, key: {1}")]
     NotFound(String, String),
@@ -19,6 +19,14 @@ pub enum KvError {
     EncodeError(#[from] prost::EncodeError),
     #[error("Failed to decode protobuf message")]
     DecodeError(#[from] prost::DecodeError),
+    #[error("Frame error")]
+    FrameError,
+    #[error("io  error")]
+    IoError(#[from] std::io::Error),
+    #[error("cert error {0}: {1}")]
+    CertifcateParseError(&'static str, &'static str),
+    #[error("TLS error")]
+    TlsError(#[from] tokio_rustls::rustls::TLSError),
 
     #[error("Internal error: {0}")]
     Internal(String),
